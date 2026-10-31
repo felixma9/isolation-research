@@ -1,0 +1,9 @@
+# Built from driver.c and small.c
+driver
+small
+
+__pycache__/
+
+# Benchmark output
+results/
+computer-state/
