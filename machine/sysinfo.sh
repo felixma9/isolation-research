@@ -33,7 +33,25 @@ report() {
   section "CPU"
   nproc
   lscpu
-  cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null
+
+  section "CPU settings (keep the same for every run)"
+  cpu=/sys/devices/system/cpu
+  # Print "label: value", or "not available" when the file does not exist (common in VMs).
+  show() { echo "$1: $(cat "$2" 2>/dev/null || echo 'not available')"; }
+  show "hyperthreading (smt control)" $cpu/smt/control
+  show "hyperthreading active (1 = on)" $cpu/smt/active
+  show "turbo off, Intel (1 = turbo off)" $cpu/intel_pstate/no_turbo
+  show "turbo on, AMD/other (1 = turbo on)" $cpu/cpufreq/boost
+  show "frequency driver" $cpu/cpu0/cpufreq/scaling_driver
+  show "min frequency (kHz)" $cpu/cpu0/cpufreq/scaling_min_freq
+  show "max frequency (kHz)" $cpu/cpu0/cpufreq/scaling_max_freq
+  if [ -e $cpu/cpu0/cpufreq/scaling_governor ]; then
+    echo "governor on each CPU (count governor):"
+    cat $cpu/cpu*/cpufreq/scaling_governor | sort | uniq -c
+  else
+    echo "governor: not available"
+  fi
+  echo "online CPUs: $(cat $cpu/online)"
 
   section "Memory"
   free -h
