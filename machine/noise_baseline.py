@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Measure how much memory, load and CPU use fluctuate on an idle machine.
 
-Usage: ./noise_baseline.py [duration_seconds]   (default 60)
+Usage: machine/noise_baseline.py [duration_seconds]   (default 60)
 
 Run it after Pre-run steps 1 to 5 of the Measurement How-To. It only reads
 /proc, starts no other programs and changes nothing. The summary is printed and
-saved to computer-state/noise-baseline-<hostname>-<date>-<time>.txt next to
-this script.
+saved to computer-state/noise-baseline-<hostname>-<date>-<time>.txt at the top
+of the project.
 """
 
 import os
@@ -84,7 +84,7 @@ def main():
     report = "\n".join(lines) + "\n"
     print(report, end="")
 
-    outdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "computer-state")
+    outdir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "computer-state")
     os.makedirs(outdir, exist_ok=True)
     outfile = os.path.join(
         outdir, f"noise-baseline-{socket.gethostname()}-{started_at.strftime('%Y%m%d-%H%M%S')}.txt"

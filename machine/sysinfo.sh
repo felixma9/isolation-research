@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Record the machine's state before a benchmark run.
-# Usage: ./sysinfo.sh   (works from any directory)
+# Usage: machine/sysinfo.sh   (works from any directory)
 # Output is always saved to computer-state/sysinfo-<hostname>-<date>-<time>.txt
-# next to this script (the directory is created if needed), so start conditions
-# are always logged in one place.
+# at the top of the project (the directory is created if needed), so start
+# conditions are always logged in one place.
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-outdir="$script_dir/computer-state"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+outdir="$root/computer-state"
 mkdir -p "$outdir"
 outfile="$outdir/sysinfo-$(hostname)-$(date +%Y%m%d-%H%M%S).txt"
 
@@ -72,7 +72,7 @@ report() {
   ps -eo pcpu,pmem,comm --sort=-pcpu | head -6
 
   section "Tools"
-  for tool in gcc python3 perf strace; do
+  for tool in gcc make python3 perf strace; do
     command -v $tool || echo "$tool MISSING"
   done
   echo

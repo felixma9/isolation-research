@@ -1,6 +1,5 @@
-# Built from driver.c and small.c
-driver
-small
+# Built by make
+build/
 
 __pycache__/
 
