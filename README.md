@@ -15,8 +15,9 @@ Makefile          make builds everything into build/
 common/           C code shared by benchmark programs
   driver.c/.h       start N copies of a workload, READY/RELEASED protocol, hold until SIGTERM
   netns.c/.h        network namespace helpers
+  cgroup.c/.h       cgroup v2 helpers (cgroups under /sys/fs/cgroup/isolation-benchmark)
 workloads/        programs the benchmarks run (small.c: prints a ready line, then pause())
-benchmarkN/       one folder per benchmark
+benchmarkN/       one folder per benchmark (1: network namespaces, 2: cgroups)
   main.c            the benchmark program, built from common/
   config.py         conditions, values of N, repeats, and checks for run.py
 lib/              Python shared by every benchmark
