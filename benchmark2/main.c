@@ -15,8 +15,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "cgroup.h"
-#include "driver.h"
+#include "../common/cgroup.h"
+#include "../common/driver.h"
 
 int main(int argc, char **argv)
 {

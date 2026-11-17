@@ -12,8 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "driver.h"
-#include "netns.h"
+#include "../common/driver.h"
+#include "../common/netns.h"
 
 int main(int argc, char **argv)
 {
