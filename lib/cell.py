@@ -6,15 +6,21 @@ Steps (the "How one run works" section of the Measurement How-To):
   2. Before: wait `phase` seconds with nothing started.
   3. Start build/<benchmark> <condition> <N> build/<workload>, wait for "READY N".
   4. Running: wait `phase` seconds.
-  5. Send SIGTERM and wait for "RELEASED".
-  6. After: wait `phase` seconds.
-  7. Stop logging and write summary.txt.
+  5. Checking: run the benchmark's checks and read each process's Pss and Rss, once.
+  6. Send SIGTERM and wait for "RELEASED".
+  7. After: wait `phase` seconds.
+  8. Stop logging and write summary.txt.
 
 Each phase's value is the median of its last `window` seconds.
 
+The logging only reads /proc/meminfo and /proc/slabinfo, never a process's own
+/proc files: the first look at /proc/<pid> makes the kernel cache entries for it
+(about 5 kB per process), which would be counted as cost. Everything that looks
+at the processes waits for step 5, after the running window.
+
 Files written to the run's folder (all memory values in kB):
-  trace.csv    one row per sample: system and kernel memory, swap, totals over the processes
-  procs.csv    one row per process per sample: pid, Pss, Rss
+  trace.csv    one row per sample: system and kernel memory, swap
+  procs.csv    one row per process, read once in step 5: pid, Pss, Rss
   slab.csv     one row per kernel cache per sample
   driver.log   everything the benchmark program printed
   summary.txt  events, phase values, cost, left behind and checks
@@ -41,18 +47,12 @@ DRIVER_TIMEOUT = 600  # seconds to wait for READY or RELEASED; 1000 namespaces t
 # Derived columns, chosen so that bigger means more memory in use:
 #   SlabObjects = active objects x object size, summed over /proc/slabinfo
 #   MemUsed = MemTotal - MemAvailable, SwapUsed = SwapTotal - SwapFree
-#   Pss, Rss = summed over the driver's children; DriverPss, DriverRss = the driver itself
-# ("driver" is the benchmark program, such as build/benchmark1.)
-TRACE_COLUMNS = (
-    ["t", "phase"] + MEMINFO_FIELDS
-    + ["SlabObjects", "MemUsed", "SwapUsed", "Procs", "Pss", "Rss", "DriverPss", "DriverRss"]
-)
+TRACE_COLUMNS = ["t", "phase"] + MEMINFO_FIELDS + ["SlabObjects", "MemUsed", "SwapUsed"]
 # Quantities in summary.txt, by group. SlabObjects and Percpu are the main measures:
 # Slab and SUnreclaim only move when a cache needs a whole new page, so they miss small changes.
 GROUPS = [
     ("Kernel", ["SlabObjects", "Percpu", "VmallocUsed", "SUnreclaim", "Slab",
                 "SReclaimable", "KernelStack", "PageTables"]),
-    ("Processes", ["Pss", "Rss"]),
     ("System", ["MemUsed", "Cached", "SwapUsed"]),
 ]
 REPORTED = [q for _, quantities in GROUPS for q in quantities]
@@ -63,10 +63,9 @@ class RunFailed(Exception):
 
 
 class Sampler(threading.Thread):
-    """Logs memory every `interval` seconds until stop() is called.
+    """Logs system memory every `interval` seconds until stop() is called.
 
-    The main thread sets `phase` and `driver_pid`; every sample is labeled with
-    the phase it was taken in, and the processes logged are the driver's children.
+    The main thread sets `phase`; every sample is labeled with the phase it was taken in.
     """
 
     def __init__(self, outdir, interval):
@@ -74,7 +73,6 @@ class Sampler(threading.Thread):
         self.outdir = outdir
         self.interval = interval
         self.phase = "before"
-        self.driver_pid = None
         self.rows = []
         self.t0 = time.monotonic()
         self.done = threading.Event()
@@ -88,47 +86,43 @@ class Sampler(threading.Thread):
 
     def run(self):
         with open(self.outdir / "trace.csv", "w", newline="") as tf, \
-                open(self.outdir / "procs.csv", "w", newline="") as pf, \
                 open(self.outdir / "slab.csv", "w", newline="") as sf:
-            trace, procs, slab = csv.writer(tf), csv.writer(pf), csv.writer(sf)
+            trace, slab = csv.writer(tf), csv.writer(sf)
             trace.writerow(TRACE_COLUMNS)
-            procs.writerow(["t", "phase", "pid", "Pss", "Rss"])
             slab.writerow(["t", "phase", "cache", "active_objs", "num_objs", "objsize", "kB"])
             i = 0
             while not self.done.is_set():
-                self.sample(trace, procs, slab)
-                for f in (tf, pf, sf):  # flushed every sample, so a crash keeps the trace so far
+                self.sample(trace, slab)
+                for f in (tf, sf):  # flushed every sample, so a crash keeps the trace so far
                     f.flush()
                 # Sleep until the next whole interval, skipping any that sampling overran.
                 i = max(i + 1, int(self.now() / self.interval) + 1)
                 self.done.wait(max(0.0, i * self.interval - self.now()))
 
-    def sample(self, trace, procs, slab):
+    def sample(self, trace, slab):
         t = round(self.now(), 3)
-        phase, driver = self.phase, self.driver_pid
+        phase = self.phase
         row = read_meminfo()
-        children = []
-        if driver:
-            for pid in child_pids(driver):
-                r = read_rollup(pid)
-                if r:
-                    children.append((pid, r))
-        d = read_rollup(driver) if driver else None
         caches = read_slabinfo()
-        row.update(
-            t=t,
-            phase=phase,
-            SlabObjects=round(sum(active * size for _, active, _, size, _ in caches) / 1024),
-            Procs=len(children),
-            Pss=sum(r["Pss"] for _, r in children),
-            Rss=sum(r["Rss"] for _, r in children),
-            DriverPss=d["Pss"] if d else 0,
-            DriverRss=d["Rss"] if d else 0,
-        )
+        row.update(t=t, phase=phase,
+                   SlabObjects=round(sum(active * size for _, active, _, size, _ in caches) / 1024))
         trace.writerow([row[c] for c in TRACE_COLUMNS])
-        procs.writerows([t, phase, pid, r["Pss"], r["Rss"]] for pid, r in children)
         slab.writerows([t, phase, *c] for c in caches)
         self.rows.append(row)
+
+
+def read_processes(driver_pid, path):
+    """Write each of the driver's children's Pss and Rss to `path`. Return (count, Pss, Rss) totals."""
+    rows = []
+    for pid in child_pids(driver_pid):
+        r = read_rollup(pid)
+        if r:
+            rows.append([pid, r["Pss"], r["Rss"]])
+    with open(path, "w", newline="") as f:
+        out = csv.writer(f)
+        out.writerow(["pid", "Pss", "Rss"])
+        out.writerows(rows)
+    return len(rows), sum(r[1] for r in rows), sum(r[2] for r in rows)
 
 
 def start_driver(cmd, log_path):
@@ -186,7 +180,8 @@ def format_table(header_rows, rows, align):
             + [line(r) for r in rows])
 
 
-def write_summary(path, title, n, unit, phase, window, interval, events, rows, checks, failure, ok):
+def write_summary(path, title, n, unit, phase, window, interval, events, rows, processes, checks,
+                  failure, ok):
     values = {p: phase_values(rows, p, window) for p in ("before", "running", "after")}
     b, r, a = values["before"], values["running"], values["after"]
 
@@ -223,8 +218,12 @@ def write_summary(path, title, n, unit, phase, window, interval, events, rows, c
         "",
         "  cost = running - before; cost per " + unit + f" = cost / {n}; left behind = after - before",
         "  SlabObjects = active objects x object size, summed over /proc/slabinfo",
-        "  Pss, Rss = summed over the processes (the benchmark program itself not included)",
         "  MemUsed = MemTotal - MemAvailable; SwapUsed = SwapTotal - SwapFree",
+        "",
+        "PROCESSES (read once, after the running window; the benchmark program itself not included)",
+        (f"  {processes[0]} processes: Pss {processes[1]:,} kB ({processes[1] / processes[0]:,.1f} per process), "
+         f"Rss {processes[2]:,} kB ({processes[2] / processes[0]:,.1f} per process)"
+         if processes and processes[0] else "  none"),
         "",
         "CHECKS",
         *format_table([["check", "result", "detail"]],
@@ -263,7 +262,7 @@ def run_cell(name, bench, condition, n, outdir, phase=30, window=10, interval=1)
     cmd = [str(BUILD / name), condition, str(n), str(BUILD / bench.WORKLOAD)]
 
     sampler = Sampler(outdir, interval)
-    events, checks, failure, proc = [], [], None, None
+    events, checks, failure, proc, processes = [], [], None, None, None
 
     def mark(p, note=""):
         sampler.phase = p
@@ -277,11 +276,14 @@ def run_cell(name, bench, condition, n, outdir, phase=30, window=10, interval=1)
 
         mark("starting")
         proc, lines = start_driver(cmd, outdir / "driver.log")
-        sampler.driver_pid = proc.pid
         wait_for(lines, f"READY {n}", DRIVER_TIMEOUT)
         mark("running", "READY")
-        checks += bench.checks(condition, n, proc.pid)
         time.sleep(phase)
+
+        # Only now look at the processes (see the top of this file).
+        mark("checking")
+        checks += bench.checks(condition, n, proc.pid)
+        processes = read_processes(proc.pid, outdir / "procs.csv")
 
         mark("stopping")
         proc.send_signal(signal.SIGTERM)
@@ -312,7 +314,7 @@ def run_cell(name, bench, condition, n, outdir, phase=30, window=10, interval=1)
     title = (f"{name} {condition}, N = {n}, workload {bench.WORKLOAD}, host {host}, "
              f"started {started_at.isoformat(timespec='seconds')}")
     report = write_summary(outdir / "summary.txt", title, n, bench.CONDITIONS[condition],
-                           phase, window, interval, events, sampler.rows, checks, failure, ok)
+                           phase, window, interval, events, sampler.rows, processes, checks, failure, ok)
     give_back(created)
     print()
     print(report, end="")

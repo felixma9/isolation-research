@@ -70,6 +70,21 @@ def namespace(pid, kind="net"):
     return os.readlink(f"/proc/{pid}/ns/{kind}")
 
 
+NAMESPACE_KINDS = ["net", "mnt", "pid", "uts", "ipc", "user", "cgroup", "time"]
+
+
+def namespaces_unlike_host(pid):
+    """Return the kinds of namespace a process is in that differ from this program's (the host's)."""
+    kinds = set()
+    for kind in NAMESPACE_KINDS:
+        try:
+            if namespace(pid, kind) != namespace("self", kind):
+                kinds.add(kind)
+        except FileNotFoundError:  # a kind this kernel does not have, or the process has gone
+            pass
+    return kinds
+
+
 def held_namespaces(pid, kind="net"):
     """Return the set of namespaces a process holds open descriptors to."""
     held = set()
