@@ -26,6 +26,7 @@ lib/              Python shared by every benchmark
   session.py        a whole session: every condition x N, repeated, shuffled, retried
 machine/          sysinfo.sh and noise_baseline.py: record the machine before a session
 run.py            the one command the operator runs
+analyze.py        graph one session: cost per item against N (uv run analyze.py <session>)
 results/          output, one folder per benchmark (not in git)
 ```
 
