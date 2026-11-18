@@ -9,6 +9,7 @@
 
 int netns_enter(void)
 {
+	/* Runs in a child just before exec: move it into a brand-new network namespace. */
 	if (unshare(CLONE_NEWNET) < 0) {
 		perror("unshare");
 		return -1;
@@ -22,6 +23,7 @@ void netns_hold(void)
 	 * it alive after the next unshare() moves the process on. */
 	if (unshare(CLONE_NEWNET) < 0)
 		fail("unshare");
+	/* Open a handle to the namespace we are now in; it is never closed on purpose. */
 	if (open("/proc/self/ns/net", O_RDONLY) < 0)
 		fail("open namespace descriptor");
 }
