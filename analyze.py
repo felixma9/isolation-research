@@ -16,8 +16,9 @@ For every run that passed (the retry, where a run failed first):
 the same answer at large N, and slightly different numbers at N = 1 or 10.)
 
 Prints a table of the median per condition and N, and saves an interactive graph
-as cost-per-item.html in the session folder (open it in a browser; it works
-offline). Dots are single runs; lines join the medians of the repeats. Hover for
+as cost-per-item.html in the session folder (open it in a browser; it loads the
+Plotly library from the web, which keeps the file small). Dots are single runs;
+lines join the medians of the repeats. Hover for
 values; drag to zoom; double-click to show everything.
 """
 
@@ -127,7 +128,7 @@ def main():
     fig.update_yaxes(range=[lo, hi], gridcolor=RULE, zeroline=True, zerolinecolor="#9a9a96",
                      title="Kernel memory cost per item (kB)", linecolor="#9a9a96")
     out = session / "cost-per-item.html"
-    fig.write_html(out, include_plotlyjs=True)  # self-contained: opens offline
+    fig.write_html(out, include_plotlyjs="cdn")  # loads Plotly from the web: small file, needs internet
     print(f"Saved {out}")
 
 
