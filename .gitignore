@@ -3,6 +3,5 @@ build/
 
 __pycache__/
 
-# Benchmark output
-results/
+# Machine snapshots from scripts/sysinfo.sh
 computer-state/

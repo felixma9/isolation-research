@@ -11,33 +11,32 @@ Evaluation. Assess the prototypes against representative workloads, reporting th
 ## Layout
 
 ```
-Makefile          make builds everything into build/
-common/           C code shared by benchmark programs
-  driver.c/.h       start N copies of a workload, READY/RELEASED protocol, hold until SIGTERM
-  netns.c/.h        network namespace helpers
-  cgroup.c/.h       cgroup v2 helpers (cgroups under /sys/fs/cgroup/isolation-benchmark)
-workloads/        programs the benchmarks run (small.c: prints a ready line, then pause())
-benchmarkN/       one folder per benchmark (1: network namespaces, 2: cgroups)
-  main.c            the benchmark program, built from common/
-  config.py         conditions, values of N, repeats, and checks for run.py
-lib/              Python shared by every benchmark
-  procfs.py         readers for /proc (meminfo, slabinfo, Pss/Rss, namespaces)
-  cell.py           one run: log memory before, while and after the program holds N things
-  session.py        a whole session: every condition x N, repeated, shuffled, retried
-machine/          sysinfo.sh and noise_baseline.py: record the machine before a session
-run.py            the one command the operator runs
-analyze.py        graph one session: cost per item against N (uv run analyze.py <session> [--static])
-results/          output, one folder per benchmark (not in git)
+workloads/small.c     the program every benchmark runs: prints a line, then sleeps until killed
+Makefile              make builds it into build/small
+scripts/logger.sh     logs kernel memory from /proc once a second to <out-dir>/mem.csv
+scripts/sysinfo.sh    records the machine's state before a run (to computer-state/)
+benchmark1/run.sh     network namespaces: P, P+NS and NS at each N, 3 runs
+benchmark2/run.sh     cgroups: P, P+CG and CG at each N, 3 runs
+analysis/pinned.py    cost per item from mem.csv and the events files
+analysis/*.py         older plots and pages used for Run 4 in the team doc
+results/              every run in the team doc, one folder each (see results/README.md)
 ```
 
-## Running
+Everything is plain bash and standard tools (`unshare`, `ip netns`, `mkdir` in
+cgroupfs, `kill`). There is no harness: the logger and the run script are two
+separate processes, so the measuring never touches the things being measured.
+
+## Running (on Cortes, as root, in tmux)
 
 ```
 make
-./run.py benchmark1 --dry-run             # run order and estimated time
-sudo ./run.py benchmark1                  # whole session; run it inside tmux
-sudo ./run.py benchmark1 --cell P+NS 10   # one run
+# Pane 1: the logger. Leave it running.
+sudo scripts/logger.sh /data/felix/<out-dir>
+# Pane 2: the benchmark, with the values of N to run (at most 10000).
+sudo benchmark1/run.sh /data/felix/<out-dir> 1000 3000
+# Afterwards (Ctrl-C the logger once "all done" prints):
+python3 analysis/pinned.py /data/felix/<out-dir> > costs.json
 ```
 
-A new benchmark is a new `benchmarkN/` folder with a `main.c` and a `config.py`.
-`make` and `run.py` pick it up without other changes.
+Then copy the output folder into `results/` and add a row to `results/README.md`.
+Keep N at or below 10000 on Cortes; the run scripts refuse anything higher.

@@ -1,12 +1,12 @@
-/* small.c: the Small program. Reports ready, then sleeps until killed. */
+/* small.c: the Small program. Prints one line, then sleeps until killed. */
 #include <unistd.h>
 
 int main(void)
 {
-	/* stdout is the driver's readiness pipe: one line means "I'm ready". */
-	if (write(1, "0\n", 2) != 2) /* readiness line for the driver */
+	/* One line on stdout says "I'm running" (the run scripts send it to /dev/null). */
+	if (write(1, "0\n", 2) != 2)
 		return 1;
-	/* Sleep until a signal (SIGTERM from release()) ends the program. */
+	/* Sleep until a signal (the run script's kill) ends the program. */
 	pause();
 	return 0;
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Record the machine's state before a benchmark run.
-# Usage: machine/sysinfo.sh   (works from any directory)
+# Usage: scripts/sysinfo.sh   (works from any directory)
 # Output is always saved to computer-state/sysinfo-<hostname>-<date>-<time>.txt
 # at the top of the project (the directory is created if needed), so start
 # conditions are always logged in one place.
